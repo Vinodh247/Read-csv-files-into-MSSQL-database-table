@@ -1,0 +1,52 @@
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import create_engine
+import pandas as pd
+import numpy as np
+import pyodbc
+import urllib
+import glob
+import os
+import re
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+
+from datetime import datetime
+start_time = datetime.now()
+
+path = r'D:/logs'
+all_files = glob.glob(os.path.join(path, "*.csv"))
+le=[]
+for filename in all_files:
+    df1 = pd.read_csv(filename, error_bad_lines=False, na_values=[' ']#,sep='\t'
+                      ,encoding="ISO-8859-1",engine='python',low_memory=True) 
+    le.append(df1)
+
+df = pd.concat(le, ignore_index=True)
+df=pd.DataFrame(df)
+#print(df.columns)
+print(df.shape)
+
+search1="AreaID=*\d+"
+search2="ExportID=*\d+"
+df['AreaID']=df['uri-query'].str.findall(search1, flags=re.I).str[-1]
+repl1 = re.compile(r'AreaID=',flags=re.IGNORECASE)
+df['AreaID']=df['AreaID'].str.replace(repl1,'', regex=True).replace(np.NaN,0).astype(int)
+df['ExportID']=df['uri-query'].str.findall(search2, flags=re.I).str[-1]
+repl2 = re.compile(r'ExportID=',flags=re.IGNORECASE)
+df['ExportID']=df['ExportID'].replace("ExportID=",'', regex=True).replace(np.NaN,0).astype(int)
+
+df_4cols=df[['date','username','AreaID','ExportID']]
+df_4cols.reindex() 
+
+#df_4cols.head()
+print(df_4cols.shape)
+
+#df_4cols[df_4cols['AreaID']>0] # to check records with only values
+#df_4cols.to_csv(r'c:\It\tempresults.csv', index = False) # to output to csv
+
+engine = create_engine('mssql+pyodbc://admin:Password@<Servername>,1433/Logs?driver=ODBC Driver 17 for SQL Server'
+, fast_executemany=True)
+df_4cols.to_sql('logs', schema='dbo', con = engine, if_exists='append',index=False, chunksize=100000)
+
+end_time = datetime.now()
+print('Duration: {}'.format(end_time - start_time))
